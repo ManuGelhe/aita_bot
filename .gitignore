@@ -105,3 +105,6 @@ dist
 
 reddit_secret.txt
 reddit_id.txt
+mastodon_id.txt
+mastodon_secret.txt
+mastodon_token.txt

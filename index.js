@@ -101,6 +101,12 @@ async function postStates(info) {
     let obj = await data.json();
     let lastId = obj.id;
 
+    //PIN FIRST TOOT
+    data = await fetch("https://botsin.space/api/v1/statuses/"+lastId+"/pin",
+        {
+            headers: {Authorization: "Bearer "+ token},
+            method: "POST"
+        });
     //SIGUIENTES TOOTS CON TODO EL TEXTO
 
 

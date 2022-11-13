@@ -6,22 +6,23 @@ import * as fs from 'fs/promises';
 let lastUsedId = "";
 
 main();
+//POST EACH 5 minutes
+setInterval(main, 1000*60*5)
 
 
-//RETRIEVES THE LAST REDDIT POST IN R/AMITHEASSHOLE AND CHECKS IF IT'S ALREADY UPLOADED TO MASTODON
+//RETRIEVES THE LAST REDDIT POSTS IN R/AMITHEASSHOLE AND CHECKS IF IT'S ALREADY UPLOADED TO MASTODON
 //IF IT'S NOT, WILL PUBLISH A THREAD WITH THE CONTENT OF THE LATEST POST AND WILL ADD A POLL AT THE END
 async function main() {
     let accTokenReddit = await redditToken();
-    let latestReddditPost = await latestRedditPost(accTokenReddit);
-    let relevantPostInfo = relevantPost(latestReddditPost);
-
-    if (relevantPostInfo.id !== lastUsedId) {
-        //TODO MASTODON POST TWEETS
-        postStates(relevantPostInfo);
-        //CHANGE LAST USED ID TO THE NEW POST ID
-        lastUsedId = relevantPostInfo.id;
+    let latestReddditPostArr = await latestRedditPosts(accTokenReddit);
+    for (let npost = 0; npost < latestReddditPostArr.length; npost++) {
+        let cpost = latestReddditPostArr[npost];
+        let postInfo = relevantPost(cpost);
+        if(npost == 0) lastUsedId = postInfo.id;
+        postStates(postInfo);
     }
 }
+
 
 
 //RETURNS A NEW ACCESS TOKEN
@@ -51,16 +52,22 @@ async function redditToken() {
 }
 
 //RETURN LATEST REDDIT POST
-async function latestRedditPost(token) {
+async function latestRedditPosts(token) {
 
     const options = {
         method: 'GET',
         headers: { Authorization: "bearer " + token }
     };
+    let post = null;
+    if (lastUsedId.length == 0) {
+        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/new?limit=3', options);
+        post = await data.json();
+    } else {
+        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/new?limit=100&before=' + lastUsedId, options);
+        post = await data.json();
+    }
 
-    let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/new?limit=1', options);
-    let post = await data.json();
-    return post;
+    return post.data.children;
 }
 
 /*EXTRACT RELEVANT INFORMATION ABOUT THE POST IN THE FOLLOWING FORMAT
@@ -72,12 +79,12 @@ async function latestRedditPost(token) {
     }
 */
 function relevantPost(post) {
-    let postInfo = post.data.children[0].data;
+    let postInfo = post.data;
     let relPostInfo = {
         title: postInfo.title,
         text: postInfo.selftext,
         url: postInfo.url,
-        id: postInfo.id
+        id: "t3_" + postInfo.id
     }
     return relPostInfo;
 }
@@ -89,7 +96,7 @@ async function postStates(info) {
 
     //PRIMER TOOT CON EL TITULO
     let params = new URLSearchParams();
-    params.set("status", info.title + "\n\n"+info.url+"\n\n\n#AITA #AmITheAsshole #Bot #Bots #Reddit");
+    params.set("status", info.title + "\n\n" + info.url + "\n\n\n#AITA #AmITheAsshole #Bot #Bots #Reddit");
     params.set("media_ids[]", []);
 
     let data = await fetch('https://botsin.space/api/v1/statuses',
@@ -102,13 +109,65 @@ async function postStates(info) {
     let lastId = obj.id;
 
     //PIN FIRST TOOT
-    data = await fetch("https://botsin.space/api/v1/statuses/"+lastId+"/pin",
+    data = await fetch("https://botsin.space/api/v1/statuses/" + lastId + "/pin",
         {
-            headers: {Authorization: "Bearer "+ token},
+            headers: { Authorization: "Bearer " + token },
             method: "POST"
         });
-    //SIGUIENTES TOOTS CON TODO EL TEXTO
 
+    //SIGUIENTES TOOTS CON TODO EL TEXTO
+    let txt = info.text;
+    let prgrph = txt.split("\n");
+    for (let npr = 0; npr < prgrph.length; npr++) {
+        let pr = prgrph[npr];
+        if (pr !== "" && pr !== " ") {
+            //Split paragraph in words
+            let words = pr.split(" ");
+            let tootContent = "";
+            for (let nw = 0; nw < words.length; nw++) {
+                let cword = words[nw];
+                if ((tootContent.length + cword.length + 1) <= 500) {
+                    //If adding a new word will fit, we add it to cword
+                    tootContent += tootContent.length == 0 ? cword : (" " + cword);
+                } else {
+                    //If adding a new word wont fit we send the current toot
+                    let params = new URLSearchParams();
+                    params.set("status", tootContent);
+                    params.set("media_ids[]", []);
+                    params.set("visibility", "unlisted");
+                    params.set("in_reply_to_id", lastId);
+                    let data = await fetch('https://botsin.space/api/v1/statuses',
+                        {
+                            body: params.toString(),
+                            headers: { Authorization: "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded" },
+                            method: "POST"
+                        });
+                    let obj = await data.json();
+                    lastId = obj.id;
+
+                    //And set the new value to tootContent
+                    tootContent = cword;
+                }
+            }
+
+            //If tootContent has something in it we have to publish it
+            if (tootContent.length > 0) {
+                let params = new URLSearchParams();
+                params.set("status", tootContent);
+                params.set("media_ids[]", []);
+                params.set("visibility", "unlisted");
+                params.set("in_reply_to_id", lastId);
+                let data = await fetch('https://botsin.space/api/v1/statuses',
+                    {
+                        body: params.toString(),
+                        headers: { Authorization: "Bearer " + token, "Content-Type": "application/x-www-form-urlencoded" },
+                        method: "POST"
+                    });
+                let obj = await data.json();
+                lastId = obj.id;
+            }
+        }
+    }
 
 
     //ENCUESTA
@@ -119,6 +178,7 @@ async function postStates(info) {
     params.append("poll[options][]", "ESH - EVERYONE SUCKS HERE");
     params.append("poll[options][]", "NAH - NO ASSHOLES HERE");
     params.set("poll[expires_in]", 604800);
+    params.set("visibility", "unlisted");
     params.set("in_reply_to_id", lastId);
     data = await fetch('https://botsin.space/api/v1/statuses',
         {

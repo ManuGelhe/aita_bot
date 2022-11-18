@@ -12,8 +12,8 @@ try {
 
 
 main();
-//POST EACH 5 minutes
-setInterval(main, 1000 * 60 * 5)
+//POST EACH 30 minutes
+setInterval(main, 1000 * 60 * 60 * 0.5);
 
 
 //RETRIEVES THE LAST REDDIT POSTS IN R/AMITHEASSHOLE AND CHECKS IF IT'S ALREADY UPLOADED TO MASTODON
@@ -25,7 +25,6 @@ async function main() {
         let cpost = latestReddditPostArr[npost];
         let postInfo = relevantPost(cpost);
         if (npost == 0) await updatelastUsedId(postInfo.id);
-        debugger;
         await postStates(postInfo);
     }
 }
@@ -65,10 +64,10 @@ async function latestRedditPosts(token) {
     };
     let post = null;
     if (lastUsedId.length == 0) {
-        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/new?limit=3', options);
+        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/hot?limit=3', options);
         post = await data.json();
     } else {
-        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/new?limit=100&before=' + lastUsedId, options);
+        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/hot?limit=100&before=' + lastUsedId, options);
         post = await data.json();
     }
 

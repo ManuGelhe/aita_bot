@@ -4,10 +4,16 @@ import * as fs from 'fs/promises';
 
 
 let lastUsedId = "";
+//TRY TO INITIALIZE LAST USED ID TO WHATEVER IS IN POST_ID
+try {
+    lastUsedId = await fs.readFile("./post_id.txt", { encoding: "utf8" });
+} catch (error) {
+}
+
 
 main();
 //POST EACH 5 minutes
-setInterval(main, 1000*60*5)
+setInterval(main, 1000 * 60 * 5)
 
 
 //RETRIEVES THE LAST REDDIT POSTS IN R/AMITHEASSHOLE AND CHECKS IF IT'S ALREADY UPLOADED TO MASTODON
@@ -18,12 +24,11 @@ async function main() {
     for (let npost = 0; npost < latestReddditPostArr.length; npost++) {
         let cpost = latestReddditPostArr[npost];
         let postInfo = relevantPost(cpost);
-        if(npost == 0) lastUsedId = postInfo.id;
-        postStates(postInfo);
+        if (npost == 0) await updatelastUsedId(postInfo.id);
+        debugger;
+        await postStates(postInfo);
     }
 }
-
-
 
 //RETURNS A NEW ACCESS TOKEN
 async function redditToken() {
@@ -188,4 +193,10 @@ async function postStates(info) {
         });
     obj = await data.json();
     lastId = obj.id;
+}
+
+//Updates de value of lasUsedId both in lastUsedId variable and post_id.txt
+async function updatelastUsedId(id){
+    await fs.writeFile("./post_id.txt", id, { encoding : "utf8"});
+    lastUsedId = id;
 }

@@ -2,31 +2,77 @@
 import { debug } from 'console';
 import * as fs from 'fs/promises';
 
-
-let lastUsedId = "";
-//TRY TO INITIALIZE LAST USED ID TO WHATEVER IS IN POST_ID
-try {
-    lastUsedId = await fs.readFile("./post_id.txt", { encoding: "utf8" });
-} catch (error) {
-}
-
-
 main();
-//POST EACH 30 minutes
-setInterval(main, 1000 * 60 * 60 * 0.5);
+//POST EACH HOUR
+setInterval(main, 1000 * 60 * 60);
 
 
 //RETRIEVES THE LAST REDDIT POSTS IN R/AMITHEASSHOLE AND CHECKS IF IT'S ALREADY UPLOADED TO MASTODON
 //IF IT'S NOT, WILL PUBLISH A THREAD WITH THE CONTENT OF THE LATEST POST AND WILL ADD A POLL AT THE END
 async function main() {
-    let accTokenReddit = await redditToken();
-    let latestReddditPostArr = await latestRedditPosts(accTokenReddit);
-    for (let npost = 0; npost < latestReddditPostArr.length; npost++) {
-        let cpost = latestReddditPostArr[npost];
-        let postInfo = relevantPost(cpost);
-        if (npost == 0) await updatelastUsedId(postInfo.id);
-        await postStates(postInfo);
+    try {
+        console.log(Date() + "\nPrograma inicia\n\n");
+        let mids = await getPostId();
+        console.log(Date() + "\nPost_id leido y mapa incializado\n\n");
+        debugger;
+        let accTokenReddit = await redditToken();
+        console.log(Date() + "\nToken Reddit recibido\n\n");
+        debugger;
+        let latestReddditPostArr = await latestRedditPosts(accTokenReddit);
+        console.log(Date() + "\nCogidos los últimos post de reddit hot\n\n");
+        debugger;
+        let postToUse = chooseRedditPost(latestReddditPostArr, mids);
+        console.log(Date() + "\nElegido post para publicar\n\n");
+        debugger;
+        if(postToUse.id !== null){
+            await postStates(postToUse);
+            console.log(Date() + "\nPost publicado en mastodon\n\n");
+            debugger;
+            updateMap(mids);
+            console.log(Date() + "\nMapa actualizado\n\n");
+            debugger;
+            await updatePostId(mids, postToUse);
+            console.log(Date() + "\nPost_id.txt actualizado con el nuevo mapa\n\n");
+            debugger;
+        }
+    } catch (error) {
+        console.log(Date() + "\n"+error+"\n\n");
     }
+
+}
+
+//Returns a Map with the ids (key) and timestamps (value) of use of the posts in post_id
+async function getPostId() {
+
+    let mids = new Map();
+    let ids = await fs.readFile("./post_id.txt", { encoding: "utf8" });
+    //FORMATO POST_ID.TXT
+    /*
+        pid_1, timestamp_of_use_1
+        pid_2, timestamp_of_use_2
+        ...
+        pid_n, timestamp_of_use_n
+    */
+    ids = ids.split("\n");
+    ids.forEach(e => {
+        if(e !== ""){
+            let el = e.split(",");
+            //pid_n, tou_n
+            mids.set(el[0], el[1]);
+        }
+    })
+    return mids;
+}
+
+//Update post_id.txt with the new map AND ADDS NEW POST
+async function updatePostId(mids, post){
+    let str = "";
+    mids.forEach((v, k) => {
+        str+= k+","+v+"\n";
+    });
+    str += post.id + "," + Date.now();
+    console.log(Date()+"\nContenido Mapa:\n-----------------\n"+str+"\n\n");
+   await fs.writeFile("./post_id.txt", str, { encoding: "utf8" });
 }
 
 //RETURNS A NEW ACCESS TOKEN
@@ -43,7 +89,6 @@ async function redditToken() {
             method: "POST"
         });
     const obj = await data.json();
-    console.log(obj);
     /*
     {
     "access_token": Your access token,
@@ -55,7 +100,7 @@ async function redditToken() {
     return obj.access_token;
 }
 
-//RETURN LATEST REDDIT POST
+//RETURN 5 TOP REDDIT POSTS
 async function latestRedditPosts(token) {
 
     const options = {
@@ -63,15 +108,27 @@ async function latestRedditPosts(token) {
         headers: { Authorization: "bearer " + token }
     };
     let post = null;
-    if (lastUsedId.length == 0) {
-        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/hot?limit=3', options);
-        post = await data.json();
-    } else {
-        let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/hot?limit=100&before=' + lastUsedId, options);
-        post = await data.json();
-    }
+    let data = await fetch('https://oauth.reddit.com/r/AmItheAsshole/hot?limit=5', options);
+    post = await data.json();
 
     return post.data.children;
+}
+
+//RETURNS THE RELEVANT POST
+//IF THERE IS NO NEW POST RETURNS A POST WITH id = null 
+function chooseRedditPost(latestReddditPostArr, mids) {
+    var found = false;
+    var i = 0;
+    var post = { id: null };
+    while (!found && i < latestReddditPostArr.length) {
+        let tpost = relevantPost(latestReddditPostArr[i]);
+        if(!mids.has(tpost.id)){
+            found = true;
+            post = tpost;
+        }
+        i++;
+    }
+    return post;
 }
 
 /*EXTRACT RELEVANT INFORMATION ABOUT THE POST IN THE FOLLOWING FORMAT
@@ -194,8 +251,16 @@ async function postStates(info) {
     lastId = obj.id;
 }
 
-//Updates de value of lasUsedId both in lastUsedId variable and post_id.txt
-async function updatelastUsedId(id){
-    await fs.writeFile("./post_id.txt", id, { encoding : "utf8"});
-    lastUsedId = id;
+//DELETES ANY POST OLDER THAN 7 DAYS
+function updateMap(mids, post){
+    let keys = mids.keys();
+    let now = Date.now();
+    for(const id of keys){
+        let timeused = mids.get(id);
+
+        //IF IT WAS TOOTED MORE THAN A WEEK AGO WE DELETE IT
+        if(timeused + (1000*60*60*24*7) <= now){
+            mids.delete(id);
+        }
+    }
 }

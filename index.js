@@ -238,7 +238,7 @@ async function postStates(info) {
     params.append("poll[options][]", "NTA - NOT THE ASSHOLE");
     params.append("poll[options][]", "ESH - EVERYONE SUCKS HERE");
     params.append("poll[options][]", "NAH - NO ASSHOLES HERE");
-    params.set("poll[expires_in]", 604800);
+    params.set("poll[expires_in]", 60*60*24);
     params.set("visibility", "unlisted");
     params.set("in_reply_to_id", lastId);
     data = await fetch('https://botsin.space/api/v1/statuses',

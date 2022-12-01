@@ -233,7 +233,7 @@ async function postStates(info) {
 
     //ENCUESTA
     params = new URLSearchParams();
-    params.set("status", "This is the real poll test and an answer!!");
+    params.set("status", "Am I The Asshole?");
     params.append("poll[options][]", "YTA - YOU THE ASSHOLE");
     params.append("poll[options][]", "NTA - NOT THE ASSHOLE");
     params.append("poll[options][]", "ESH - EVERYONE SUCKS HERE");
